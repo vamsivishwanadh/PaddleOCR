@@ -2,7 +2,12 @@ import React, { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { Upload, File, Image, FileText, X } from "lucide-react";
 
-const FileUpload = ({ onFileSelect, isLoading, selectedFile }) => {
+const FileUpload = ({
+  onFileSelect,
+  onExtractText,
+  isLoading,
+  selectedFile,
+}) => {
   const [dragActive, setDragActive] = useState(false);
 
   const onDrop = useCallback(
@@ -122,11 +127,7 @@ const FileUpload = ({ onFileSelect, isLoading, selectedFile }) => {
 
       {selectedFile && (
         <div style={{ marginTop: "20px", textAlign: "center" }}>
-          <button
-            className="btn"
-            onClick={() => onFileSelect(selectedFile)}
-            disabled={isLoading}
-          >
+          <button className="btn" onClick={onExtractText} disabled={isLoading}>
             {isLoading ? (
               <>
                 <div className="spinner"></div>

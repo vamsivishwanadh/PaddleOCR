@@ -28,7 +28,13 @@ def initialize_ocr():
     global ocr
     try:
         print("Attempting to initialize PaddleOCR...")
-        ocr = PaddleOCR(use_textline_orientation=True, lang='ch')
+        # PaddleOCR 3.x initialization
+        ocr = PaddleOCR(
+            use_doc_orientation_classify=False,
+            use_doc_unwarping=False,
+            use_textline_orientation=False,
+            lang='ch'
+        )
         print("PaddleOCR initialized successfully!")
         return True
     except PermissionError as e:
@@ -41,7 +47,7 @@ def initialize_ocr():
         print(f"Failed to initialize PaddleOCR: {e}")
         print("Trying alternative initialization...")
         try:
-            # Try with different parameters
+            # Try with minimal parameters
             ocr = PaddleOCR(lang='ch')
             print("PaddleOCR initialized with alternative parameters!")
             return True
@@ -75,7 +81,9 @@ def process_pdf(pdf_bytes):
             cv_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
             
             # Run OCR on this page
-            result = ocr.ocr(cv_image, cls=True)
+            print(f"Running OCR on PDF page {page_num + 1}, image size: {cv_image.shape}")
+            result = ocr.predict(cv_image)
+            print(f"OCR result for page {page_num + 1}: {len(result[0]) if result and result[0] else 0} text lines")
             
             # Format results for this page
             page_results = []
@@ -111,11 +119,14 @@ def process_image(image_bytes):
         cv_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
         
         # Run OCR
-        result = ocr.ocr(cv_image, cls=True)
+        print(f"Running OCR on image of size: {cv_image.shape}")
+        result = ocr.predict(cv_image)
+        print(f"OCR result type: {type(result)}, length: {len(result) if result else 'None'}")
         
         # Format results
         ocr_results = []
         if result and result[0]:
+            print(f"Processing {len(result[0])} detected text lines")
             for line in result[0]:
                 if line:
                     text = line[1][0]
@@ -126,6 +137,8 @@ def process_image(image_bytes):
                         "confidence": float(confidence),
                         "bbox": bbox
                     })
+        else:
+            print("No text detected in image")
         
         return ocr_results
         
@@ -159,16 +172,20 @@ def ocr_endpoint():
             # Try to open as image first
             pil_image = Image.open(io.BytesIO(file_bytes))
             # If successful, it's an image
+            print(f"Processing as image: {pil_image.format}, size: {pil_image.size}")
             ocr_results = process_image(file_bytes)
             file_type = "image"
-        except Exception:
+        except Exception as img_error:
+            print(f"Not an image, trying as PDF. Image error: {img_error}")
             # If not an image, try as PDF
             try:
+                print("Processing as PDF...")
                 ocr_results = process_pdf(file_bytes)
                 file_type = "pdf"
             except Exception as pdf_error:
+                print(f"PDF processing failed: {pdf_error}")
                 return jsonify({
-                    "error": f"Unsupported file format. Must be an image (PNG, JPG, etc.) or PDF. Error: {str(pdf_error)}"
+                    "error": f"Unsupported file format. Must be an image (PNG, JPG, etc.) or PDF. Image error: {str(img_error)}, PDF error: {str(pdf_error)}"
                 }), 400
         
         return jsonify({

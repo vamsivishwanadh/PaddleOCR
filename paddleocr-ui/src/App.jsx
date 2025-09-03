@@ -66,16 +66,6 @@ function App() {
     }
   };
 
-  const handleFileSelectWithExtraction = (file) => {
-    handleFileSelect(file);
-    if (file) {
-      // Auto-extract when file is selected
-      setTimeout(() => {
-        handleExtractText();
-      }, 100);
-    }
-  };
-
   return (
     <div className="App">
       <Toaster
@@ -135,7 +125,8 @@ function App() {
         <div className="main-content">
           <div>
             <FileUpload
-              onFileSelect={handleFileSelectWithExtraction}
+              onFileSelect={handleFileSelect}
+              onExtractText={handleExtractText}
               isLoading={isLoading}
               selectedFile={selectedFile}
             />
