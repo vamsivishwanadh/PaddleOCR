@@ -81,4 +81,33 @@ export const testConnection = async () => {
   }
 };
 
+// Analyze text with OpenAI for ICD-10 code extraction
+export const analyzeWithOpenAI = async (text) => {
+  try {
+    const response = await api.post("/analyze-openai", {
+      text: text,
+    });
+    return response.data;
+  } catch (error) {
+    console.error("OpenAI API Error:", error);
+
+    if (error.response) {
+      // Server responded with error status
+      throw new Error(
+        `Server error: ${error.response.status} - ${
+          error.response.data?.error || "Unknown error"
+        }`
+      );
+    } else if (error.request) {
+      // Request was made but no response received
+      throw new Error(
+        "No response from server. Please check if the service is running."
+      );
+    } else {
+      // Something else happened
+      throw new Error(`Request error: ${error.message}`);
+    }
+  }
+};
+
 export default api;

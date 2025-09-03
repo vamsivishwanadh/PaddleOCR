@@ -13,6 +13,8 @@ import cv2
 import numpy as np
 import base64
 import io
+import openai
+import json
 from PIL import Image
 import traceback
 import fitz  # PyMuPDF for PDF processing
@@ -20,6 +22,11 @@ import json
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
+
+# OpenAI configuration
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+if OPENAI_API_KEY:
+    openai.api_key = OPENAI_API_KEY
 
 # Initialize PaddleOCR
 print("Initializing PaddleOCR...")
@@ -102,12 +109,7 @@ def process_pdf(pdf_bytes):
             page_results = []
             if hasattr(res, 'json') and res.json:
                 json_data = res.json
-                
-                # Print the complete JSON structure for reference
-                print(f"\n=== COMPLETE JSON FOR PAGE {page_idx + 1} ===")
-                print(json.dumps(json_data.get('rec_texts', []), indent=2, ensure_ascii=False))
-                print(f"=== END JSON FOR PAGE {page_idx + 1} ===\n")
-                
+
                 # Save complete JSON data to file for debugging
                 json_filename = f"debug_page_{page_idx + 1}.json"
                 with open(json_filename, 'w', encoding='utf-8') as f:
@@ -317,6 +319,97 @@ def reinitialize_ocr():
         return jsonify({
             "success": False,
             "message": f"Error during reinitialization: {str(e)}"
+        }), 500
+
+@app.route('/analyze-openai', methods=['POST'])
+def analyze_with_openai():
+    """Analyze extracted text with OpenAI for ICD-10 code extraction"""
+    try:
+        if not OPENAI_API_KEY:
+            return jsonify({
+                "success": False,
+                "error": "OpenAI API key not configured. Please set OPENAI_API_KEY environment variable."
+            }), 500
+        
+        data = request.get_json()
+        if not data or 'text' not in data:
+            return jsonify({"error": "No text data provided"}), 400
+        
+        text = data['text']
+        if not text or not text.strip():
+            return jsonify({"error": "Empty text provided"}), 400
+        
+        print(f"Analyzing text with OpenAI (length: {len(text)} characters)")
+        
+        # Create the prompt for ICD-10 code extraction
+        prompt = f"""
+You are a medical coding expert. Analyze the following medical text and extract all relevant ICD-10 codes with their full descriptions.
+
+For each condition, diagnosis, or medical finding mentioned, provide:
+1. The ICD-10 code
+2. The full official description
+3. A brief explanation of why this code applies
+
+Format your response as a JSON object with this structure:
+{{
+    "icd_codes": [
+        {{
+            "code": "ICD-10 code",
+            "description": "Full official description",
+            "explanation": "Why this code applies to the text",
+            "confidence": "high/medium/low"
+        }}
+    ],
+    "summary": "Brief summary of the medical conditions found",
+    "total_codes": number
+}}
+
+Medical text to analyze:
+{text}
+
+Please be thorough and accurate. Only include codes that are clearly mentioned or strongly implied in the text.
+"""
+        
+        # Call OpenAI API
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a medical coding expert specializing in ICD-10 code extraction."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=2000,
+            temperature=0.1
+        )
+        
+        # Extract the response
+        ai_response = response.choices[0].message.content.strip()
+        print(f"OpenAI response received: {len(ai_response)} characters")
+        
+        # Try to parse as JSON
+        try:
+            parsed_response = json.loads(ai_response)
+        except json.JSONDecodeError:
+            # If not valid JSON, wrap it in a structured response
+            parsed_response = {
+                "icd_codes": [],
+                "summary": ai_response,
+                "total_codes": 0,
+                "raw_response": ai_response
+            }
+        
+        return jsonify({
+            "success": True,
+            "analysis": parsed_response,
+            "text_length": len(text),
+            "model_used": "gpt-3.5-turbo"
+        })
+        
+    except Exception as e:
+        print(f"OpenAI analysis error: {e}")
+        print(traceback.format_exc())
+        return jsonify({
+            "success": False,
+            "error": f"OpenAI analysis failed: {str(e)}"
         }), 500
 
 @app.route('/', methods=['GET'])

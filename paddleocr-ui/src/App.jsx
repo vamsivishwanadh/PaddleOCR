@@ -4,6 +4,7 @@ import FileUpload from "./components/FileUpload";
 import FilePreview from "./components/FilePreview";
 import ResultsDisplay from "./components/ResultsDisplay";
 import TextOnlyDisplay from "./components/TextOnlyDisplay";
+import OpenAIResults from "./components/OpenAIResults";
 import { extractText, testConnection } from "./services/api";
 import "./App.css";
 
@@ -13,6 +14,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState(null);
   const [showTextOnly, setShowTextOnly] = useState(false);
+  const [openAIAnalysis, setOpenAIAnalysis] = useState(null);
 
   // Test connection on app load
   useEffect(() => {
@@ -41,6 +43,7 @@ function App() {
     setSelectedFile(file);
     setResults(null); // Clear previous results when new file is selected
     setShowTextOnly(false); // Reset text-only view when new file is selected
+    setOpenAIAnalysis(null); // Clear previous OpenAI analysis
   };
 
   const handleExtractText = async () => {
@@ -67,6 +70,14 @@ function App() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleOpenAIAnalysis = (analysis) => {
+    setOpenAIAnalysis(analysis);
+  };
+
+  const handleCloseOpenAIResults = () => {
+    setOpenAIAnalysis(null);
   };
 
   return (
@@ -168,12 +179,23 @@ function App() {
 
           <div>
             {showTextOnly ? (
-              <TextOnlyDisplay results={results} selectedFile={selectedFile} />
+              <TextOnlyDisplay
+                results={results}
+                selectedFile={selectedFile}
+                onOpenAIAnalysis={handleOpenAIAnalysis}
+              />
             ) : (
               <ResultsDisplay
                 results={results}
                 selectedFile={selectedFile}
                 isLoading={isLoading}
+              />
+            )}
+
+            {openAIAnalysis && (
+              <OpenAIResults
+                analysis={openAIAnalysis}
+                onClose={handleCloseOpenAIResults}
               />
             )}
           </div>

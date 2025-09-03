@@ -5,3 +5,4 @@ opencv-python
 numpy
 pillow
 pymupdf
+openai>=1.0.0

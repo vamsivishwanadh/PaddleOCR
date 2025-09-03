@@ -1,7 +1,10 @@
 import React, { useState } from "react";
+import { analyzeWithOpenAI } from "../services/api";
+import { toast } from "react-hot-toast";
 
-const TextOnlyDisplay = ({ results, selectedFile }) => {
+const TextOnlyDisplay = ({ results, selectedFile, onOpenAIAnalysis }) => {
   const [copied, setCopied] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   if (!results || !results.success) {
     return (
@@ -52,6 +55,34 @@ const TextOnlyDisplay = ({ results, selectedFile }) => {
     URL.revokeObjectURL(url);
   };
 
+  const handleOpenAIAnalysis = async () => {
+    if (!allText || allText.trim().length === 0) {
+      toast.error("No text to analyze");
+      return;
+    }
+
+    setIsAnalyzing(true);
+    try {
+      toast.loading("Analyzing with OpenAI...", { id: "openai-analysis" });
+
+      const response = await analyzeWithOpenAI(allText);
+
+      toast.success("Analysis completed!", { id: "openai-analysis" });
+
+      // Pass the analysis results to the parent component
+      if (onOpenAIAnalysis) {
+        onOpenAIAnalysis(response);
+      }
+    } catch (error) {
+      console.error("OpenAI analysis error:", error);
+      toast.error(error.message || "Failed to analyze with OpenAI", {
+        id: "openai-analysis",
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   return (
     <div className="results-container">
       <div className="results-header">
@@ -70,6 +101,14 @@ const TextOnlyDisplay = ({ results, selectedFile }) => {
             title="Download as text file"
           >
             💾 Download
+          </button>
+          <button
+            onClick={handleOpenAIAnalysis}
+            className="openai-btn"
+            title="Analyze with OpenAI for ICD-10 codes"
+            disabled={isAnalyzing}
+          >
+            {isAnalyzing ? "🔄 Analyzing..." : "🤖 Analyze with OpenAI"}
           </button>
         </div>
       </div>
@@ -138,7 +177,8 @@ const TextOnlyDisplay = ({ results, selectedFile }) => {
         }
 
         .copy-btn,
-        .download-btn {
+        .download-btn,
+        .openai-btn {
           padding: 8px 16px;
           border: none;
           border-radius: 6px;
@@ -152,9 +192,21 @@ const TextOnlyDisplay = ({ results, selectedFile }) => {
         }
 
         .copy-btn:hover,
-        .download-btn:hover {
+        .download-btn:hover,
+        .openai-btn:hover {
           background: rgba(255, 255, 255, 0.3);
           transform: translateY(-1px);
+        }
+
+        .openai-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+          transform: none;
+        }
+
+        .openai-btn:disabled:hover {
+          background: rgba(255, 255, 255, 0.2);
+          transform: none;
         }
 
         .copy-btn.copied {
