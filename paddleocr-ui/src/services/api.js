@@ -31,7 +31,7 @@ export const extractText = async (file) => {
     const base64 = await fileToBase64(file);
 
     const response = await api.post("/ocr", {
-      image: base64,
+      file: base64,
     });
 
     return response.data;

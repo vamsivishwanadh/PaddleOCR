@@ -3,6 +3,7 @@ import { Toaster, toast } from "react-hot-toast";
 import FileUpload from "./components/FileUpload";
 import FilePreview from "./components/FilePreview";
 import ResultsDisplay from "./components/ResultsDisplay";
+import TextOnlyDisplay from "./components/TextOnlyDisplay";
 import { extractText, testConnection } from "./services/api";
 import "./App.css";
 
@@ -11,6 +12,7 @@ function App() {
   const [results, setResults] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState(null);
+  const [showTextOnly, setShowTextOnly] = useState(false);
 
   // Test connection on app load
   useEffect(() => {
@@ -38,6 +40,7 @@ function App() {
   const handleFileSelect = (file) => {
     setSelectedFile(file);
     setResults(null); // Clear previous results when new file is selected
+    setShowTextOnly(false); // Reset text-only view when new file is selected
   };
 
   const handleExtractText = async () => {
@@ -132,14 +135,47 @@ function App() {
             />
 
             <FilePreview file={selectedFile} results={results} />
+
+            {results && (
+              <div style={{ marginTop: "20px", textAlign: "center" }}>
+                <button
+                  onClick={() => setShowTextOnly(!showTextOnly)}
+                  style={{
+                    padding: "10px 20px",
+                    backgroundColor: showTextOnly ? "#3b82f6" : "#10b981",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "8px",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    fontWeight: "500",
+                    transition: "all 0.2s ease",
+                  }}
+                  onMouseOver={(e) => {
+                    e.target.style.transform = "translateY(-1px)";
+                    e.target.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
+                  }}
+                  onMouseOut={(e) => {
+                    e.target.style.transform = "translateY(0)";
+                    e.target.style.boxShadow = "none";
+                  }}
+                >
+                  {showTextOnly ? "Show Full Results" : "Extract Only Text"}
+                </button>
+              </div>
+            )}
           </div>
 
           <div>
-            <ResultsDisplay
-              results={results}
-              selectedFile={selectedFile}
-              isLoading={isLoading}
-            />
+            {showTextOnly ? (
+              <TextOnlyDisplay results={results} selectedFile={selectedFile} />
+            ) : (
+              <ResultsDisplay
+                results={results}
+                selectedFile={selectedFile}
+                isLoading={isLoading}
+              />
+            )}
           </div>
         </div>
 
