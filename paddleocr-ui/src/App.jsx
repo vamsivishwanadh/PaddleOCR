@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { Toaster, toast } from "react-hot-toast";
+import {
+  Rocket,
+  Check,
+  X,
+  BarChart3,
+  FileText,
+  AlertTriangle,
+} from "lucide-react";
 import FileUpload from "./components/FileUpload";
 import FilePreview from "./components/FilePreview";
 import ResultsDisplay from "./components/ResultsDisplay";
@@ -109,29 +117,35 @@ function App() {
 
       <div className="container">
         <header className="header">
-          <h1>PaddleOCR Text Extraction</h1>
-          <p>Upload documents to extract text with precise coordinates</p>
+          <h1>
+            <Rocket
+              size={32}
+              style={{ marginRight: "12px", verticalAlign: "middle" }}
+            />
+            PaddleOCR Text Extraction
+          </h1>
+          <p>
+            Upload documents to extract text with precise coordinates and
+            AI-powered analysis
+          </p>
 
           {connectionStatus && (
             <div
-              style={{
-                marginTop: "20px",
-                padding: "8px 16px",
-                borderRadius: "20px",
-                fontSize: "0.9rem",
-                display: "inline-block",
-                background: connectionStatus.success
-                  ? "rgba(74, 222, 128, 0.2)"
-                  : "rgba(239, 68, 68, 0.2)",
-                color: connectionStatus.success ? "#4ade80" : "#ef4444",
-                border: `1px solid ${
-                  connectionStatus.success ? "#4ade80" : "#ef4444"
-                }`,
-              }}
+              className={`connection-status ${
+                connectionStatus.success ? "connected" : "disconnected"
+              }`}
             >
-              {connectionStatus.success
-                ? "✓ Service Connected"
-                : "✗ Service Disconnected"}
+              {connectionStatus.success ? (
+                <>
+                  <Check size={20} />
+                  Service Connected
+                </>
+              ) : (
+                <>
+                  <X size={20} />
+                  Service Disconnected
+                </>
+              )}
             </div>
           )}
         </header>
@@ -148,30 +162,36 @@ function App() {
             <FilePreview file={selectedFile} results={results} />
 
             {results && (
-              <div style={{ marginTop: "20px", textAlign: "center" }}>
+              <div
+                style={{
+                  marginTop: "var(--space-6)",
+                  textAlign: "center",
+                  animation: "fadeInUp 0.4s ease-out",
+                }}
+              >
                 <button
                   onClick={() => setShowTextOnly(!showTextOnly)}
+                  className={`btn ${
+                    showTextOnly ? "btn-secondary" : "btn-success"
+                  }`}
                   style={{
-                    padding: "10px 20px",
-                    backgroundColor: showTextOnly ? "#3b82f6" : "#10b981",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "8px",
-                    cursor: "pointer",
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    transition: "all 0.2s ease",
-                  }}
-                  onMouseOver={(e) => {
-                    e.target.style.transform = "translateY(-1px)";
-                    e.target.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
-                  }}
-                  onMouseOut={(e) => {
-                    e.target.style.transform = "translateY(0)";
-                    e.target.style.boxShadow = "none";
+                    minWidth: "200px",
+                    fontSize: "1rem",
+                    fontWeight: "700",
+                    padding: "var(--space-4) var(--space-6)",
                   }}
                 >
-                  {showTextOnly ? "Show Full Results" : "Extract Only Text"}
+                  {showTextOnly ? (
+                    <>
+                      <BarChart3 size={18} />
+                      Show Full Results
+                    </>
+                  ) : (
+                    <>
+                      <FileText size={18} />
+                      Extract Only Text
+                    </>
+                  )}
                 </button>
               </div>
             )}
@@ -202,35 +222,22 @@ function App() {
         </div>
 
         {!connectionStatus?.success && (
-          <div
-            style={{
-              marginTop: "40px",
-              padding: "20px",
-              background: "rgba(239, 68, 68, 0.1)",
-              border: "1px solid rgba(239, 68, 68, 0.3)",
-              borderRadius: "12px",
-              color: "#ef4444",
-              textAlign: "center",
-            }}
-          >
-            <h3 style={{ marginBottom: "10px" }}>Service Not Available</h3>
-            <p style={{ marginBottom: "15px" }}>
+          <div className="service-warning">
+            <h3>
+              <AlertTriangle
+                size={20}
+                style={{ marginRight: "8px", verticalAlign: "middle" }}
+              />
+              Service Not Available
+            </h3>
+            <p>
               Please ensure PaddleOCR service is running on
-              http://localhost:8868
+              <br />
+              <strong>http://localhost:8868</strong>
             </p>
-            <div style={{ fontSize: "0.9rem", opacity: 0.8 }}>
+            <div style={{ fontSize: "0.9rem", opacity: 0.9 }}>
               <p>To start the service, run:</p>
-              <code
-                style={{
-                  background: "rgba(0,0,0,0.1)",
-                  padding: "4px 8px",
-                  borderRadius: "4px",
-                  display: "inline-block",
-                  marginTop: "5px",
-                }}
-              >
-                hub serving start -m ocr_system -p 8868
-              </code>
+              <code>hub serving start -m ocr_system -p 8868</code>
             </div>
           </div>
         )}

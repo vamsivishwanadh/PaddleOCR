@@ -1,4 +1,15 @@
 import React, { useState } from "react";
+import {
+  Bot,
+  Copy,
+  Download,
+  X,
+  Check,
+  LayoutGrid,
+  Table,
+  Stethoscope,
+  FileText,
+} from "lucide-react";
 
 const OpenAIResults = ({ analysis, onClose }) => {
   const [copied, setCopied] = useState(false);
@@ -10,7 +21,7 @@ const OpenAIResults = ({ analysis, onClose }) => {
         <div className="openai-header">
           <h2>OpenAI Analysis Results</h2>
           <button onClick={onClose} className="close-btn">
-            ✕
+            <X size={16} />
           </button>
         </div>
         <div className="no-results">
@@ -300,7 +311,13 @@ const OpenAIResults = ({ analysis, onClose }) => {
   return (
     <div className="openai-results-container">
       <div className="openai-header">
-        <h2>🤖 OpenAI ICD-10 Analysis</h2>
+        <h2>
+          <Bot
+            size={24}
+            style={{ marginRight: "8px", verticalAlign: "middle" }}
+          />
+          OpenAI ICD-10 Analysis
+        </h2>
         <div className="header-actions">
           <div className="view-toggle">
             <button
@@ -308,14 +325,16 @@ const OpenAIResults = ({ analysis, onClose }) => {
               className={`toggle-btn ${viewMode === "cards" ? "active" : ""}`}
               title="Card view"
             >
-              📋 Cards
+              <LayoutGrid size={14} />
+              Cards
             </button>
             <button
               onClick={() => setViewMode("table")}
               className={`toggle-btn ${viewMode === "table" ? "active" : ""}`}
               title="Table view"
             >
-              📊 Table
+              <Table size={14} />
+              Table
             </button>
           </div>
           <button
@@ -323,17 +342,28 @@ const OpenAIResults = ({ analysis, onClose }) => {
             className={`copy-btn ${copied ? "copied" : ""}`}
             title="Copy ICD-10 codes"
           >
-            {copied ? "✓ Copied!" : "📋 Copy Codes"}
+            {copied ? (
+              <>
+                <Check size={16} />
+                Copied!
+              </>
+            ) : (
+              <>
+                <Copy size={16} />
+                Copy Codes
+              </>
+            )}
           </button>
           <button
             onClick={handleDownloadCodes}
             className="download-btn"
             title="Download ICD-10 codes"
           >
-            💾 Download
+            <Download size={16} />
+            Download
           </button>
           <button onClick={onClose} className="close-btn">
-            ✕
+            <X size={16} />
           </button>
         </div>
       </div>
@@ -352,7 +382,13 @@ const OpenAIResults = ({ analysis, onClose }) => {
       </div>
 
       <div className="codes-section">
-        <h3>🏥 ICD-10 Codes Found</h3>
+        <h3>
+          <Stethoscope
+            size={20}
+            style={{ marginRight: "8px", verticalAlign: "middle" }}
+          />
+          ICD-10 Codes Found
+        </h3>
         {displayCodes.length > 0 ? (
           viewMode === "table" ? (
             <div className="table-container">
@@ -460,202 +496,400 @@ const OpenAIResults = ({ analysis, onClose }) => {
         )}
       </div>
 
-      {(codesText || raw || summary) && (
-        <div className="summary-section">
-          <h3>📝 Plain Text Codes</h3>
-          <pre className="summary-content" style={{ whiteSpace: "pre-wrap" }}>
-            {codesText || raw || summary}
-          </pre>
-        </div>
-      )}
-
       <style jsx>{`
         .openai-results-container {
-          background: white;
-          border-radius: 12px;
-          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+          background: var(--white);
+          border-radius: var(--radius-2xl);
+          box-shadow: var(--shadow-2xl);
           overflow: hidden;
-          margin-top: 20px;
+          margin-top: var(--space-6);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          position: relative;
+          animation: fadeInUp 0.6s ease-out;
         }
+
+        .openai-results-container::before {
+          content: "";
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 4px;
+          background: var(--success-gradient);
+          border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+        }
+
         .openai-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 20px;
-          background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-          color: white;
+          padding: var(--space-6);
+          background: var(--success-gradient);
+          color: var(--white);
+          position: relative;
+          overflow: hidden;
+        }
+
+        .openai-header::before {
+          content: "";
+          position: absolute;
+          top: 0;
+          left: -100%;
+          width: 100%;
+          height: 100%;
+          background: linear-gradient(
+            90deg,
+            transparent,
+            rgba(255, 255, 255, 0.1),
+            transparent
+          );
+          transition: left 0.5s ease;
+        }
+
+        .openai-header:hover::before {
+          left: 100%;
         }
         .header-actions {
           display: flex;
-          gap: 10px;
+          gap: var(--space-3);
           align-items: center;
+          flex-wrap: wrap;
         }
+
         .view-toggle {
           display: flex;
-          gap: 4px;
-          background: rgba(255, 255, 255, 0.1);
-          border-radius: 6px;
-          padding: 2px;
-        }
-        .toggle-btn {
-          padding: 6px 12px;
-          border: none;
-          border-radius: 4px;
-          cursor: pointer;
-          font-size: 12px;
-          font-weight: 500;
-          transition: all 0.2s ease;
-          background: transparent;
-          color: rgba(255, 255, 255, 0.7);
-        }
-        .toggle-btn.active {
-          background: rgba(255, 255, 255, 0.2);
-          color: white;
-        }
-        .toggle-btn:hover {
+          gap: var(--space-1);
           background: rgba(255, 255, 255, 0.15);
-          color: white;
+          border-radius: var(--radius-lg);
+          padding: var(--space-1);
+          border: 1px solid rgba(255, 255, 255, 0.2);
         }
+
+        .toggle-btn {
+          padding: var(--space-2) var(--space-3);
+          border: none;
+          border-radius: var(--radius);
+          cursor: pointer;
+          font-size: 0.8rem;
+          font-weight: 600;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          background: transparent;
+          color: rgba(255, 255, 255, 0.8);
+          position: relative;
+          overflow: hidden;
+        }
+
+        .toggle-btn::before {
+          content: "";
+          position: absolute;
+          top: 0;
+          left: -100%;
+          width: 100%;
+          height: 100%;
+          background: linear-gradient(
+            90deg,
+            transparent,
+            rgba(255, 255, 255, 0.1),
+            transparent
+          );
+          transition: left 0.3s ease;
+        }
+
+        .toggle-btn:hover::before {
+          left: 100%;
+        }
+
+        .toggle-btn.active {
+          background: rgba(255, 255, 255, 0.25);
+          color: var(--white);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .toggle-btn:hover {
+          background: rgba(255, 255, 255, 0.2);
+          color: var(--white);
+          transform: translateY(-1px);
+        }
+
         .copy-btn,
         .download-btn,
         .close-btn {
-          padding: 8px 16px;
+          padding: var(--space-3) var(--space-4);
           border: none;
-          border-radius: 6px;
+          border-radius: var(--radius-lg);
           cursor: pointer;
-          font-size: 14px;
-          font-weight: 500;
-          transition: all 0.2s ease;
+          font-size: 0.9rem;
+          font-weight: 600;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
           background: rgba(255, 255, 255, 0.2);
-          color: white;
+          color: var(--white);
+          border: 1px solid rgba(255, 255, 255, 0.3);
+          position: relative;
+          overflow: hidden;
+          min-height: 44px;
+          display: flex;
+          align-items: center;
+          gap: var(--space-2);
+        }
+
+        .copy-btn::before,
+        .download-btn::before,
+        .close-btn::before {
+          content: "";
+          position: absolute;
+          top: 0;
+          left: -100%;
+          width: 100%;
+          height: 100%;
+          background: linear-gradient(
+            90deg,
+            transparent,
+            rgba(255, 255, 255, 0.2),
+            transparent
+          );
+          transition: left 0.5s ease;
+        }
+
+        .copy-btn:hover::before,
+        .download-btn:hover::before,
+        .close-btn:hover::before {
+          left: 100%;
         }
         .codes-section {
-          padding: 20px;
+          padding: var(--space-6);
         }
+
         .codes-list {
           display: flex;
           flex-direction: column;
-          gap: 15px;
+          gap: var(--space-4);
         }
+
         .code-item {
-          background: #f8fafc;
-          border: 1px solid #e2e8f0;
-          border-radius: 8px;
-          padding: 15px;
+          background: var(--gray-50);
+          border: 2px solid var(--gray-200);
+          border-radius: var(--radius-xl);
+          padding: var(--space-5);
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          position: relative;
+          overflow: hidden;
         }
+
+        .code-item::before {
+          content: "";
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 4px;
+          height: 100%;
+          background: var(--success-gradient);
+          transform: scaleY(0);
+          transition: transform 0.3s ease;
+        }
+
+        .code-item:hover::before {
+          transform: scaleY(1);
+        }
+
+        .code-item:hover {
+          background: var(--white);
+          border-color: var(--gray-300);
+          transform: translateY(-2px);
+          box-shadow: var(--shadow-lg);
+        }
+
         .code-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 10px;
+          margin-bottom: var(--space-3);
         }
+
         .code-number {
-          font-family: monospace;
-          font-weight: 700;
-          color: #10b981;
-          background: rgba(16, 185, 129, 0.1);
-          padding: 4px 8px;
-          border-radius: 4px;
+          font-family: var(--font-mono);
+          font-weight: 800;
+          color: var(--success);
+          background: linear-gradient(
+            135deg,
+            rgba(16, 185, 129, 0.1) 0%,
+            rgba(5, 150, 105, 0.1) 100%
+          );
+          padding: var(--space-2) var(--space-3);
+          border-radius: var(--radius);
+          border: 1px solid rgba(16, 185, 129, 0.2);
+          font-size: 0.9rem;
         }
         .summary-section {
-          padding: 20px;
-          border-top: 1px solid #e2e8f0;
+          padding: var(--space-6);
+          border-top: 1px solid var(--gray-200);
+          background: var(--gray-50);
         }
+
         .summary-content {
-          background: #f8fafc;
-          border: 1px solid #e2e8f0;
-          border-radius: 8px;
-          padding: 15px;
+          background: var(--white);
+          border: 2px solid var(--gray-200);
+          border-radius: var(--radius-xl);
+          padding: var(--space-5);
+          font-family: var(--font-mono);
+          font-size: 0.9rem;
+          line-height: 1.6;
+          color: var(--gray-700);
+          box-shadow: var(--shadow-sm);
         }
+
         .table-container {
           overflow-x: auto;
-          border-radius: 8px;
-          border: 1px solid #e2e8f0;
+          border-radius: var(--radius-xl);
+          border: 2px solid var(--gray-200);
+          box-shadow: var(--shadow-lg);
+          background: var(--white);
         }
+
         .icd-table {
           width: 100%;
           border-collapse: collapse;
-          background: white;
+          background: var(--white);
         }
+
         .icd-table th {
-          background: #f8fafc;
-          padding: 12px 16px;
+          background: var(--gray-50);
+          padding: var(--space-4) var(--space-5);
           text-align: left;
-          font-weight: 600;
-          color: #374151;
-          border-bottom: 2px solid #e2e8f0;
-          font-size: 14px;
+          font-weight: 700;
+          color: var(--gray-800);
+          border-bottom: 2px solid var(--gray-200);
+          font-size: 0.9rem;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
         }
+
         .icd-table td {
-          padding: 12px 16px;
-          border-bottom: 1px solid #e2e8f0;
+          padding: var(--space-4) var(--space-5);
+          border-bottom: 1px solid var(--gray-200);
           vertical-align: top;
+          transition: all 0.2s ease;
         }
+
         .table-row:hover {
-          background: #f8fafc;
+          background: var(--gray-50);
+          transform: scale(1.01);
         }
         .diagnosis-cell {
           max-width: 400px;
         }
+
         .diagnosis-text {
-          font-weight: 500;
-          color: #374151;
-          margin-bottom: 4px;
+          font-weight: 600;
+          color: var(--gray-800);
+          margin-bottom: var(--space-1);
+          line-height: 1.5;
         }
+
         .explanation-text {
-          font-size: 12px;
-          color: #6b7280;
+          font-size: 0.8rem;
+          color: var(--gray-500);
           font-style: italic;
+          background: var(--gray-100);
+          padding: var(--space-2);
+          border-radius: var(--radius);
+          border-left: 3px solid var(--gray-300);
         }
+
         .code-cell {
           text-align: center;
           min-width: 120px;
         }
+
         .status-cell {
           text-align: center;
           min-width: 100px;
         }
+
         .confidence-cell {
           text-align: center;
           min-width: 100px;
         }
+
         .status-badge {
-          padding: 4px 8px;
-          border-radius: 12px;
-          font-size: 12px;
-          font-weight: 500;
+          padding: var(--space-1) var(--space-3);
+          border-radius: var(--radius-2xl);
+          font-size: 0.75rem;
+          font-weight: 700;
           text-transform: uppercase;
+          letter-spacing: 0.05em;
+          border: 1px solid transparent;
         }
+
         .status-active {
-          background: #dcfce7;
+          background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
           color: #166534;
+          border-color: #16a34a;
         }
+
         .status-review {
-          background: #fef3c7;
+          background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
           color: #92400e;
+          border-color: #f59e0b;
         }
+
         .status-history {
-          background: #e0e7ff;
+          background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
           color: #3730a3;
+          border-color: #6366f1;
         }
+
         .confidence-badge {
-          padding: 4px 8px;
-          border-radius: 12px;
-          font-size: 12px;
-          font-weight: 500;
+          padding: var(--space-1) var(--space-3);
+          border-radius: var(--radius-2xl);
+          font-size: 0.75rem;
+          font-weight: 700;
           text-transform: capitalize;
+          border: 1px solid transparent;
         }
+
         .confidence-high {
-          background: #dcfce7;
+          background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
           color: #166534;
+          border-color: #16a34a;
         }
+
         .confidence-medium {
-          background: #fef3c7;
+          background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
           color: #92400e;
+          border-color: #f59e0b;
         }
+
         .confidence-low {
-          background: #fee2e2;
+          background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
           color: #991b1b;
+          border-color: #ef4444;
+        }
+
+        @media (max-width: 768px) {
+          .openai-header {
+            flex-direction: column;
+            gap: var(--space-4);
+            text-align: center;
+            padding: var(--space-5);
+          }
+
+          .header-actions {
+            justify-content: center;
+            flex-wrap: wrap;
+          }
+
+          .codes-section {
+            padding: var(--space-4);
+          }
+
+          .table-container {
+            font-size: 0.8rem;
+          }
+
+          .icd-table th,
+          .icd-table td {
+            padding: var(--space-2) var(--space-3);
+          }
         }
       `}</style>
     </div>

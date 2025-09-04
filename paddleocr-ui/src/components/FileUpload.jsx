@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
-import { Upload, File, Image, FileText, X } from "lucide-react";
+import { Upload, File, Image, FileText, X, FileUp } from "lucide-react";
 
 const FileUpload = ({
   onFileSelect,
@@ -56,7 +56,18 @@ const FileUpload = ({
 
   return (
     <div className="card">
-      <h2 style={{ marginBottom: "20px", color: "#2d3748" }}>
+      <h2
+        style={{
+          marginBottom: "var(--space-6)",
+          color: "var(--gray-800)",
+          fontSize: "1.5rem",
+          fontWeight: "700",
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--space-3)",
+        }}
+      >
+        <FileUp size={20} style={{ marginRight: "8px" }} />
         Upload Document
       </h2>
 
@@ -81,44 +92,107 @@ const FileUpload = ({
       ) : (
         <div
           style={{
-            background: "#f7fafc",
-            border: "1px solid #e2e8f0",
-            borderRadius: "8px",
-            padding: "20px",
+            background: "var(--gray-50)",
+            border: "2px solid var(--gray-200)",
+            borderRadius: "var(--radius-xl)",
+            padding: "var(--space-6)",
             position: "relative",
+            transition: "all 0.3s ease",
+            boxShadow: "var(--shadow-md)",
           }}
         >
           <button
             onClick={handleRemoveFile}
             style={{
               position: "absolute",
-              top: "10px",
-              right: "10px",
-              background: "none",
-              border: "none",
+              top: "var(--space-3)",
+              right: "var(--space-3)",
+              background: "var(--white)",
+              border: "1px solid var(--gray-300)",
+              borderRadius: "var(--radius)",
               cursor: "pointer",
-              color: "#a0aec0",
-              padding: "4px",
+              color: "var(--gray-500)",
+              padding: "var(--space-2)",
+              transition: "all 0.2s ease",
+              boxShadow: "var(--shadow-sm)",
             }}
             disabled={isLoading}
+            onMouseOver={(e) => {
+              e.target.style.background = "var(--error)";
+              e.target.style.color = "var(--white)";
+              e.target.style.transform = "scale(1.1)";
+            }}
+            onMouseOut={(e) => {
+              e.target.style.background = "var(--white)";
+              e.target.style.color = "var(--gray-500)";
+              e.target.style.transform = "scale(1)";
+            }}
           >
             <X size={20} />
           </button>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            {getFileIcon(selectedFile)}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-4)",
+              paddingRight: "var(--space-12)",
+            }}
+          >
+            <div
+              style={{
+                background: "var(--white)",
+                borderRadius: "var(--radius-lg)",
+                padding: "var(--space-4)",
+                boxShadow: "var(--shadow-sm)",
+                border: "1px solid var(--gray-200)",
+              }}
+            >
+              {getFileIcon(selectedFile)}
+            </div>
             <div style={{ flex: 1 }}>
               <div
                 style={{
-                  fontWeight: "600",
-                  color: "#2d3748",
-                  marginBottom: "4px",
+                  fontWeight: "700",
+                  color: "var(--gray-800)",
+                  marginBottom: "var(--space-1)",
+                  fontSize: "1.1rem",
                 }}
               >
                 {selectedFile.name}
               </div>
-              <div style={{ fontSize: "0.85rem", color: "#718096" }}>
-                {formatFileSize(selectedFile.size)} • {selectedFile.type}
+              <div
+                style={{
+                  fontSize: "0.9rem",
+                  color: "var(--gray-500)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "var(--space-2)",
+                }}
+              >
+                <span
+                  style={{
+                    background: "var(--gray-200)",
+                    padding: "2px 8px",
+                    borderRadius: "var(--radius)",
+                    fontSize: "0.8rem",
+                    fontWeight: "600",
+                  }}
+                >
+                  {formatFileSize(selectedFile.size)}
+                </span>
+                <span>•</span>
+                <span
+                  style={{
+                    background: "var(--primary-gradient)",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                    backgroundClip: "text",
+                    fontWeight: "600",
+                  }}
+                >
+                  {selectedFile.type}
+                </span>
               </div>
             </div>
           </div>
@@ -126,8 +200,24 @@ const FileUpload = ({
       )}
 
       {selectedFile && (
-        <div style={{ marginTop: "20px", textAlign: "center" }}>
-          <button className="btn" onClick={onExtractText} disabled={isLoading}>
+        <div
+          style={{
+            marginTop: "var(--space-6)",
+            textAlign: "center",
+            animation: "fadeInUp 0.4s ease-out",
+          }}
+        >
+          <button
+            className={`btn ${isLoading ? "btn-loading" : ""}`}
+            onClick={onExtractText}
+            disabled={isLoading}
+            style={{
+              minWidth: "200px",
+              fontSize: "1.1rem",
+              fontWeight: "700",
+              padding: "var(--space-4) var(--space-8)",
+            }}
+          >
             {isLoading ? (
               <>
                 <div className="spinner"></div>
@@ -135,7 +225,7 @@ const FileUpload = ({
               </>
             ) : (
               <>
-                <Upload size={16} />
+                <Upload size={20} />
                 Extract Text
               </>
             )}
