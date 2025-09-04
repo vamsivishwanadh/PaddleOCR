@@ -20,16 +20,164 @@ const OpenAIResults = ({ analysis, onClose }) => {
   }
 
   const { analysis: analysisData } = analysis;
-  const icdCodes = analysisData.icd_codes || [];
-  const summary = analysisData.summary || "No summary available";
+  let icdCodes = analysisData.icd_codes || analysisData.icdCodes || [];
+  const summary = analysisData.summary || "";
+  const raw = analysisData.raw_response || "";
+
+  // Helper: strip markdown code fences and parse JSON safely
+  const parseJsonFromString = (text) => {
+    if (!text || typeof text !== "string") return null;
+    const trimmed = text.trim();
+    // Extract between ```json ... ``` or ``` ... ``` if present
+    const fenceMatch = trimmed.match(/```(?:json)?\n([\s\S]*?)```/i);
+    const candidate = fenceMatch ? fenceMatch[1] : trimmed;
+    // If still wrapped as stringified JSON, try to find first { and last }
+    const start = candidate.indexOf("{");
+    const end = candidate.lastIndexOf("}");
+    const slice = start !== -1 && end !== -1 ? candidate.slice(start, end + 1) : candidate;
+    try {
+      return JSON.parse(slice);
+    } catch (e) {
+      return null;
+    }
+  };
+
+  // Try to pull structured codes from raw_response or summary if empty
+  if ((!Array.isArray(icdCodes) || icdCodes.length === 0)) {
+    const parsedRaw = parseJsonFromString(raw);
+    if (parsedRaw && Array.isArray(parsedRaw.icd_codes)) {
+      icdCodes = parsedRaw.icd_codes;
+    } else if (parsedRaw && Array.isArray(parsedRaw.icdCodes)) {
+      icdCodes = parsedRaw.icdCodes;
+    } else {
+      const parsedSummary = parseJsonFromString(summary);
+      if (parsedSummary && Array.isArray(parsedSummary.icd_codes)) {
+        icdCodes = parsedSummary.icd_codes;
+      } else if (parsedSummary && Array.isArray(parsedSummary.icdCodes)) {
+        icdCodes = parsedSummary.icdCodes;
+      }
+    }
+  }
+
+  const getDescription = (item) => {
+    if (!item) return "";
+    return (
+      item.description ||
+      item.desc ||
+      item.long_description ||
+      item.full_description ||
+      item.fullDescription ||
+      item.label ||
+      item.display ||
+      item.title ||
+      item.name ||
+      ""
+    );
+  };
+
+  // Build a map code -> description from free text
+  const buildCodeDescMapFromText = (text) => {
+    const map = {};
+    if (!text) return map;
+    const lines = text.split(/\r?\n/);
+    // Patterns: CODE :|-|–|— description OR CODE description
+    const patternSep = /^\s*[-*•]?\s*([A-TV-Z][0-9][0-9A-Z](?:\.[0-9A-Z]{1,4})?)\s*[:\-–—]\s*(.+)\s*$/i;
+    const patternSpace = /^\s*[-*•]?\s*([A-TV-Z][0-9][0-9A-Z](?:\.[0-9A-Z]{1,4})?)\s+(.+)\s*$/i;
+    for (const line of lines) {
+      let m = line.match(patternSep) || line.match(patternSpace);
+      if (m) {
+        const code = m[1].toUpperCase();
+        const desc = (m[2] || "").trim();
+        if (desc && !map[code]) map[code] = desc;
+      }
+    }
+    return map;
+  };
+
+  // Fallback: extract codes and descriptions from text if structured icd_codes array is empty
+  const extractCodesFromText = (text) => {
+    if (!text) return [];
+    const lines = text.split(/\r?\n/);
+
+    // Pattern captures: optional bullet, code, separator (: - – —), description
+    const linePattern = /^\s*[-*•]?\s*([A-TV-Z][0-9][0-9A-Z](?:\.[0-9A-Z]{1,4})?)\s*[:\-–—]\s*(.+)\s*$/i;
+    // Also allow just whitespace between code and description
+    const spacePattern = /^\s*[-*•]?\s*([A-TV-Z][0-9][0-9A-Z](?:\.[0-9A-Z]{1,4})?)\s+(.+)\s*$/i;
+
+    const items = [];
+    const seen = new Set();
+
+    for (const line of lines) {
+      let m = line.match(linePattern);
+      if (!m) m = line.match(spacePattern);
+      if (m) {
+        const code = m[1].toUpperCase();
+        const description = (m[2] || "").trim();
+        if (!seen.has(code) && description) {
+          seen.add(code);
+          items.push({ code, description });
+        }
+      }
+    }
+
+    // Second pass: capture codes appearing inline without a clear separator
+    const codeRegex = /\b([A-TV-Z][0-9][0-9A-Z](?:\.[0-9A-Z]{1,4})?)\b/g; // exclude U (reserved)
+    const allMatches = (text.match(codeRegex) || []).map((c) => c.toUpperCase());
+    for (const code of allMatches) {
+      if (seen.has(code)) continue;
+      const lineWithCode = lines.find((l) => l.toUpperCase().includes(code));
+      let description = "";
+      if (lineWithCode) {
+        const idx = lineWithCode.toUpperCase().indexOf(code);
+        const after = lineWithCode.slice(idx + code.length);
+        const sepIdx = after.search(/[:\-–—]/);
+        if (sepIdx !== -1) {
+          description = after.slice(sepIdx + 1).trim();
+        } else {
+          const tail = after.trim();
+          if (tail.split(/\s+/).length > 1) description = tail;
+        }
+      }
+      seen.add(code);
+      items.push({ code, description });
+    }
+
+    return items;
+  };
+
+  // Structured preferred list (if available)
+  const structuredCodes = Array.isArray(icdCodes) && icdCodes.length > 0
+    ? icdCodes.map((c) => ({ code: (c.code || "").toUpperCase(), description: getDescription(c), confidence: c.confidence, explanation: c.explanation }))
+    : [];
+
+  // Fallback display list
+  const fallbackCodes = structuredCodes.length === 0 ? extractCodesFromText(raw || summary) : [];
+  const displayCodes = structuredCodes.length > 0 ? structuredCodes : fallbackCodes;
+
+  // Build a code->desc map from text to enrich display/plain-text when description missing
+  const codeDescMap = buildCodeDescMapFromText(raw || summary);
+
+  // Compose a plain text view for the ICD codes (Code: Description)
+  const codesTextFromStructured = structuredCodes.length > 0
+    ? structuredCodes.map((item) => {
+        const desc = getDescription(item) || codeDescMap[item.code] || "(no description)";
+        return `${item.code}: ${desc}`.trim();
+      }).join("\n")
+    : "";
+
+  const codesTextFromDisplay = displayCodes
+    .map((item) => {
+      const code = (item.code || "").toUpperCase();
+      const desc = getDescription(item) || codeDescMap[code] || item.description || "(no description)";
+      return `${code}: ${desc}`.trim();
+    })
+    .join("\n");
+
+  const codesText = codesTextFromStructured || codesTextFromDisplay;
 
   const handleCopyCodes = async () => {
-    const codesText = icdCodes
-      .map((code) => `${code.code}: ${code.description}`)
-      .join("\n");
-
     try {
-      await navigator.clipboard.writeText(codesText);
+      await navigator.clipboard.writeText(codesText || (raw || summary));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
@@ -38,14 +186,20 @@ const OpenAIResults = ({ analysis, onClose }) => {
   };
 
   const handleDownloadCodes = () => {
-    const codesText = icdCodes
-      .map(
-        (code) =>
-          `${code.code}: ${code.description}\nExplanation: ${code.explanation}\nConfidence: ${code.confidence}\n`
-      )
+    const detailedList = (structuredCodes.length > 0 ? structuredCodes : displayCodes);
+    const detailedText = (detailedList.length ? detailedList : [])
+      .map((item) => {
+        const code = (item.code || "").toUpperCase();
+        const desc = getDescription(item) || codeDescMap[code] || item.description || "(no description)";
+        const parts = [`${code}: ${desc}`];
+        if (item.explanation) parts.push(`Explanation: ${item.explanation}`);
+        if (item.confidence) parts.push(`Confidence: ${item.confidence}`);
+        return parts.join("\n");
+      })
       .join("\n---\n");
 
-    const blob = new Blob([codesText], { type: "text/plain" });
+    const content = detailedText || (codesText || (raw || summary) || "No codes found");
+    const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -84,7 +238,7 @@ const OpenAIResults = ({ analysis, onClose }) => {
       <div className="analysis-stats">
         <div className="stat-item">
           <span className="stat-label">Total ICD-10 Codes:</span>
-          <span className="stat-value">{icdCodes.length}</span>
+          <span className="stat-value">{displayCodes.length}</span>
         </div>
         <div className="stat-item">
           <span className="stat-label">Model Used:</span>
@@ -109,272 +263,59 @@ const OpenAIResults = ({ analysis, onClose }) => {
 
       <div className="codes-section">
         <h3>🏥 ICD-10 Codes Found</h3>
-        {icdCodes.length > 0 ? (
+        {displayCodes.length > 0 ? (
           <div className="codes-list">
-            {icdCodes.map((code, index) => (
-              <div key={index} className="code-item">
-                <div className="code-header">
-                  <span className="code-number">{code.code}</span>
-                  <span
-                    className={`confidence-badge confidence-${code.confidence}`}
-                  >
-                    {code.confidence}
-                  </span>
-                </div>
-                <div className="code-description">{code.description}</div>
-                {code.explanation && (
-                  <div className="code-explanation">
-                    <strong>Why this applies:</strong> {code.explanation}
+            {displayCodes.map((item, index) => {
+              const code = (item.code || "").toUpperCase();
+              const desc = getDescription(item) || codeDescMap[code] || item.description || "(no description)";
+              return (
+                <div key={index} className="code-item">
+                  <div className="code-header">
+                    <span className="code-number">{code}</span>
+                    {item.confidence && (
+                      <span className={`confidence-badge confidence-${item.confidence}`}>
+                        {item.confidence}
+                      </span>
+                    )}
                   </div>
-                )}
-              </div>
-            ))}
+                  <div className="code-description">{desc}</div>
+                  {item.explanation && (
+                    <div className="code-explanation">
+                      <strong>Why this applies:</strong> {item.explanation}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         ) : (
           <div className="no-codes">
-            <p>No ICD-10 codes were identified in the text.</p>
+            <p>No structured ICD-10 codes found. If the summary contains codes, use Copy/Download to export.</p>
           </div>
         )}
       </div>
 
+      {(codesText || raw || summary) && (
+        <div className="summary-section">
+          <h3>📝 Plain Text Codes</h3>
+          <pre className="summary-content" style={{ whiteSpace: "pre-wrap" }}>
+            {codesText || raw || summary}
+          </pre>
+        </div>
+      )}
+
       <style jsx>{`
-        .openai-results-container {
-          background: white;
-          border-radius: 12px;
-          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-          overflow: hidden;
-          margin-top: 20px;
-        }
-
-        .openai-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 20px;
-          background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-          color: white;
-        }
-
-        .openai-header h2 {
-          margin: 0;
-          font-size: 1.5rem;
-          font-weight: 600;
-        }
-
-        .header-actions {
-          display: flex;
-          gap: 10px;
-          align-items: center;
-        }
-
-        .copy-btn,
-        .download-btn {
-          padding: 8px 16px;
-          border: none;
-          border-radius: 6px;
-          cursor: pointer;
-          font-size: 14px;
-          font-weight: 500;
-          transition: all 0.2s ease;
-          background: rgba(255, 255, 255, 0.2);
-          color: white;
-          backdrop-filter: blur(10px);
-        }
-
-        .copy-btn:hover,
-        .download-btn:hover {
-          background: rgba(255, 255, 255, 0.3);
-          transform: translateY(-1px);
-        }
-
-        .copy-btn.copied {
-          background: #3b82f6;
-          color: white;
-        }
-
-        .close-btn {
-          padding: 8px 12px;
-          border: none;
-          border-radius: 6px;
-          cursor: pointer;
-          font-size: 16px;
-          font-weight: 500;
-          background: rgba(255, 255, 255, 0.2);
-          color: white;
-          transition: all 0.2s ease;
-        }
-
-        .close-btn:hover {
-          background: rgba(255, 255, 255, 0.3);
-          transform: translateY(-1px);
-        }
-
-        .analysis-stats {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 20px;
-          padding: 20px;
-          background: #f8fafc;
-          border-bottom: 1px solid #e2e8f0;
-        }
-
-        .stat-item {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-        }
-
-        .stat-label {
-          font-size: 12px;
-          color: #64748b;
-          font-weight: 500;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-
-        .stat-value {
-          font-size: 14px;
-          color: #1e293b;
-          font-weight: 600;
-        }
-
-        .summary-section {
-          padding: 20px;
-          border-bottom: 1px solid #e2e8f0;
-        }
-
-        .summary-section h3 {
-          margin: 0 0 15px 0;
-          color: #1e293b;
-          font-size: 1.2rem;
-        }
-
-        .summary-content {
-          background: #f8fafc;
-          border: 1px solid #e2e8f0;
-          border-radius: 8px;
-          padding: 15px;
-          font-size: 14px;
-          line-height: 1.6;
-          color: #374151;
-        }
-
-        .codes-section {
-          padding: 20px;
-        }
-
-        .codes-section h3 {
-          margin: 0 0 20px 0;
-          color: #1e293b;
-          font-size: 1.2rem;
-        }
-
-        .codes-list {
-          display: flex;
-          flex-direction: column;
-          gap: 15px;
-        }
-
-        .code-item {
-          background: #f8fafc;
-          border: 1px solid #e2e8f0;
-          border-radius: 8px;
-          padding: 15px;
-          transition: all 0.2s ease;
-        }
-
-        .code-item:hover {
-          border-color: #10b981;
-          box-shadow: 0 2px 8px rgba(16, 185, 129, 0.1);
-        }
-
-        .code-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 10px;
-        }
-
-        .code-number {
-          font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
-          font-size: 16px;
-          font-weight: 700;
-          color: #10b981;
-          background: rgba(16, 185, 129, 0.1);
-          padding: 4px 8px;
-          border-radius: 4px;
-        }
-
-        .confidence-badge {
-          padding: 4px 8px;
-          border-radius: 12px;
-          font-size: 12px;
-          font-weight: 600;
-          text-transform: uppercase;
-        }
-
-        .confidence-high {
-          background: #dcfce7;
-          color: #166534;
-        }
-
-        .confidence-medium {
-          background: #fef3c7;
-          color: #92400e;
-        }
-
-        .confidence-low {
-          background: #fee2e2;
-          color: #991b1b;
-        }
-
-        .code-description {
-          font-size: 14px;
-          color: #374151;
-          font-weight: 500;
-          margin-bottom: 8px;
-        }
-
-        .code-explanation {
-          font-size: 13px;
-          color: #6b7280;
-          line-height: 1.5;
-        }
-
-        .no-codes {
-          text-align: center;
-          padding: 40px 20px;
-          color: #6b7280;
-        }
-
-        .no-results {
-          text-align: center;
-          padding: 40px 20px;
-          color: #6b7280;
-        }
-
-        @media (max-width: 768px) {
-          .openai-header {
-            flex-direction: column;
-            gap: 15px;
-            text-align: center;
-          }
-
-          .header-actions {
-            justify-content: center;
-          }
-
-          .analysis-stats {
-            flex-direction: column;
-            gap: 15px;
-          }
-
-          .code-header {
-            flex-direction: column;
-            gap: 8px;
-            align-items: flex-start;
-          }
-        }
+        .openai-results-container { background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow: hidden; margin-top: 20px; }
+        .openai-header { display: flex; justify-content: space-between; align-items: center; padding: 20px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; }
+        .header-actions { display: flex; gap: 10px; align-items: center; }
+        .copy-btn, .download-btn, .close-btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s ease; background: rgba(255, 255, 255, 0.2); color: white; }
+        .codes-section { padding: 20px; }
+        .codes-list { display: flex; flex-direction: column; gap: 15px; }
+        .code-item { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; }
+        .code-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .code-number { font-family: monospace; font-weight: 700; color: #10b981; background: rgba(16, 185, 129, 0.1); padding: 4px 8px; border-radius: 4px; }
+        .summary-section { padding: 20px; border-top: 1px solid #e2e8f0; }
+        .summary-content { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; }
       `}</style>
     </div>
   );
