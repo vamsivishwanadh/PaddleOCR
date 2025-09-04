@@ -15,18 +15,20 @@ import base64
 import io
 import openai
 import json
-from PIL import Image
+from PIL import Image, ImageFile
+# Allow loading truncated images to avoid errors on some PNGs
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 import traceback
 import fitz  # PyMuPDF for PDF processing
 import json
+import requests
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
 # OpenAI configuration
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-if OPENAI_API_KEY:
-    openai.api_key = OPENAI_API_KEY
+OPENAI_API_KEY = ""
+
 
 # Initialize PaddleOCR
 print("Initializing PaddleOCR...")
@@ -175,6 +177,11 @@ def process_image(image_bytes):
     try:
         # Convert to PIL Image
         pil_image = Image.open(io.BytesIO(image_bytes))
+        # Normalize to RGB (handles PNG with alpha or paletted images)
+        if pil_image.mode not in ("RGB", "L"):
+            pil_image = pil_image.convert("RGB")
+        elif pil_image.mode == "L":
+            pil_image = pil_image.convert("RGB")
         
         # Convert to OpenCV format
         cv_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
@@ -196,21 +203,68 @@ def process_image(image_bytes):
         result = ocr.predict(cv_image)
         print(f"OCR completed in {time.time() - t0:.2f} seconds")
         print(f"OCR result type: {type(result)}, length: {len(result) if result else 'None'}")
+        # Debug: print entire OCR results content
+        try:
+            import pprint
+            print("OCR result full content:")
+            pprint.pprint(result, width=120)
+        except Exception as e:
+            print("OCR result (fallback):", result)
         
         # Format results
         ocr_results = []
-        if result and result[0]:
-            print(f"Processing {len(result[0])} detected text lines")
-            for line in result[0]:
-                if line:
-                    text = line[1][0]
-                    confidence = line[1][1]
-                    bbox = line[0]
+        if result:
+            # Case 1: Newer dict-based schema: [{ 'rec_texts': [...], 'rec_scores': [...], 'rec_boxes': ... }]
+            if isinstance(result[0], dict) and (
+                'rec_texts' in result[0] or 'rec_scores' in result[0] or 'rec_boxes' in result[0]
+            ):
+                print("Parsing OCR result in dict schema (rec_texts/rec_scores/rec_boxes)")
+                first = result[0]
+                rec_texts = first.get('rec_texts', []) or []
+                rec_scores = first.get('rec_scores', []) or []
+                rec_boxes = first.get('rec_boxes', []) or []
+                count = max(len(rec_texts), len(rec_scores), len(rec_boxes) if hasattr(rec_boxes, '__len__') else 0)
+                for i in range(count):
+                    text = rec_texts[i] if i < len(rec_texts) else ""
+                    confidence = float(rec_scores[i]) if i < len(rec_scores) else 0.0
+                    bbox = rec_boxes[i] if i < len(rec_boxes) else []
                     ocr_results.append({
                         "text": text,
-                        "confidence": float(confidence),
+                        "confidence": confidence,
                         "bbox": bbox
                     })
+            # Case 2: Legacy list schema: [[bbox, [text, score]], ...]
+            elif isinstance(result[0], list) or isinstance(result[0], tuple):
+                lines = result[0] if isinstance(result[0], list) else result
+                print(f"Processing {len(lines)} detected text lines (legacy schema)")
+                for line in lines:
+                    if not line:
+                        continue
+                    try:
+                        text = line[1][0]
+                        confidence = line[1][1]
+                        bbox = line[0]
+                        ocr_results.append({
+                            "text": text,
+                            "confidence": float(confidence),
+                            "bbox": bbox
+                        })
+                    except Exception:
+                        # Fallback: try dict-like
+                        if isinstance(line, dict):
+                            text = line.get('text', '')
+                            confidence = float(line.get('score', 0.0))
+                            bbox = line.get('bbox', [])
+                            ocr_results.append({"text": text, "confidence": confidence, "bbox": bbox})
+            else:
+                print("Unexpected OCR result structure; returning raw text strings if available")
+                # Attempt to flatten any strings present
+                try:
+                    for item in result:
+                        if isinstance(item, str):
+                            ocr_results.append({"text": item, "confidence": 0.0, "bbox": []})
+                except Exception:
+                    pass
         else:
             print("No text detected in image")
         
@@ -219,6 +273,53 @@ def process_image(image_bytes):
     except Exception as e:
         print(f"Image processing error: {e}")
         raise e
+
+def lookup_icd10_description(code: str) -> str:
+    """Lookup ICD-10-CM code description using NIH Clinical Tables API.
+    Tries multiple query variants (with and without dot). Returns empty string on failure.
+    """
+    try:
+        norm = (code or "").strip().upper().rstrip(':;.,')
+        if not norm:
+            return ""
+        candidates = [norm]
+        # variant: remove dot
+        if '.' in norm:
+            candidates.append(norm.replace('.', ''))
+        # variant: ensure uppercase
+        candidates = list(dict.fromkeys(candidates))  # de-dup
+
+        url = "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search"
+        for term in candidates:
+            for field_param in ("df", "sf"):
+                params = {
+                    "terms": term,
+                    field_param: "code,name",
+                    "maxList": 5,
+                }
+                try:
+                    r = requests.get(url, params=params, timeout=10)
+                    r.raise_for_status()
+                    data = r.json()
+                    # data structure: [numFound, time, [codes...], [names...]]
+                    if isinstance(data, list) and len(data) >= 4:
+                        codes = data[2] or []
+                        names = data[3] or []
+                        # try exact code match first
+                        for i, c in enumerate(codes):
+                            if c and c.upper() in (norm, term) and i < len(names):
+                                return names[i]
+                        # fallback: first name if any
+                        if names:
+                            return names[0]
+                except Exception as inner_e:
+                    print(f"ICD-10 lookup attempt failed for {term} ({field_param}): {inner_e}")
+                    continue
+        print(f"ICD-10 lookup: no match for {code}")
+        return ""
+    except Exception as e:
+        print(f"ICD-10 lookup failed for {code}: {e}")
+        return ""
 
 @app.route('/ocr', methods=['POST'])
 def ocr_endpoint():
@@ -297,6 +398,7 @@ def health_check():
 @app.route('/test', methods=['GET'])
 def test():
     """Simple test endpoint"""
+    from datetime import datetime
     return jsonify({'message': 'Server is responding', 'timestamp': datetime.now().isoformat()})
 
 @app.route('/reinit', methods=['POST'])
@@ -371,7 +473,10 @@ Please be thorough and accurate. Only include codes that are clearly mentioned o
 """
         
         # Call OpenAI API
-        response = openai.ChatCompletion.create(
+        client = openai.OpenAI(
+    api_key=OPENAI_API_KEY
+)
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are a medical coding expert specializing in ICD-10 code extraction."},
@@ -396,6 +501,17 @@ Please be thorough and accurate. Only include codes that are clearly mentioned o
                 "total_codes": 0,
                 "raw_response": ai_response
             }
+        
+        # Fallback: enrich missing descriptions via NIH Clinical Tables lookup
+        enriched = []
+        for item in parsed_response.get("icd_codes", []):
+            code = (item.get("code") or "").strip()
+            desc = (item.get("description") or item.get("desc") or item.get("title") or item.get("name") or "").strip()
+            if code and not desc:
+                desc = lookup_icd10_description(code)
+            item["description"] = desc
+            enriched.append(item)
+        parsed_response["icd_codes"] = enriched
         
         return jsonify({
             "success": True,
