@@ -22,12 +22,19 @@ import traceback
 import fitz  # PyMuPDF for PDF processing
 import json
 import requests
+import os
+try:
+    # Optional: load variables from a .env file if python-dotenv is installed
+    from dotenv import load_dotenv  # type: ignore
+    load_dotenv()
+except Exception:
+    pass
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
 # OpenAI configuration
-OPENAI_API_KEY = ""
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 
 # Initialize PaddleOCR
