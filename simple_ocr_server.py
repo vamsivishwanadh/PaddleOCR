@@ -22,12 +22,19 @@ import traceback
 import fitz  # PyMuPDF for PDF processing
 import json
 import requests
+import os
+try:
+    # Optional: load variables from a .env file if python-dotenv is installed
+    from dotenv import load_dotenv  # type: ignore
+    load_dotenv()
+except Exception:
+    pass
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
 # OpenAI configuration
-OPENAI_API_KEY = ""
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 
 # Initialize PaddleOCR
@@ -111,12 +118,6 @@ def process_pdf(pdf_bytes):
             page_results = []
             if hasattr(res, 'json') and res.json:
                 json_data = res.json
-
-                # Save complete JSON data to file for debugging
-                json_filename = f"debug_page_{page_idx + 1}.json"
-                with open(json_filename, 'w', encoding='utf-8') as f:
-                    json.dump(json_data, f, indent=2, ensure_ascii=False)
-                print(f"Saved complete JSON data to: {json_filename}")
                 
                 # Extract data from the nested "res" structure
                 res_data = json_data.get('res', {})
@@ -124,10 +125,6 @@ def process_pdf(pdf_bytes):
                 rec_scores = res_data.get('rec_scores', [])
                 rec_boxes = res_data.get('rec_boxes', [])
 
-                # Print the complete JSON structure for reference
-                print(f"\n=222222== COMPLETE JSON FOR PAGE {page_idx + 1} ===")
-                print(json.dumps(rec_texts, indent=2, ensure_ascii=False))
-                print(f"==222222222= END JSON FOR PAGE {page_idx + 1} ===\n")
                 
                 # Combine texts, scores, and boxes
                 print(f"Processing {len(rec_texts)} text lines for page {page_idx + 1}")
@@ -138,7 +135,7 @@ def process_pdf(pdf_bytes):
                     page_results.append({
                         "text": text,
                         "confidence": float(confidence),
-                        "bbox": bbox,
+                        "bbox": convert_numpy_to_list(bbox),
                         "page": page_idx + 1,
                         "text_type": json_data.get('text_type', 'general'),
                         "model_settings": json_data.get('model_settings', {})
@@ -172,6 +169,17 @@ def process_pdf(pdf_bytes):
             pass
         raise e
 
+def convert_numpy_to_list(obj):
+    """Convert numpy arrays to Python lists for JSON serialization"""
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, (list, tuple)):
+        return [convert_numpy_to_list(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {key: convert_numpy_to_list(value) for key, value in obj.items()}
+    else:
+        return obj
+
 def process_image(image_bytes):
     """Process image file and run OCR"""
     try:
@@ -203,35 +211,34 @@ def process_image(image_bytes):
         result = ocr.predict(cv_image)
         print(f"OCR completed in {time.time() - t0:.2f} seconds")
         print(f"OCR result type: {type(result)}, length: {len(result) if result else 'None'}")
-        # Debug: print entire OCR results content
-        try:
-            import pprint
-            print("OCR result full content:")
-            pprint.pprint(result, width=120)
-        except Exception as e:
-            print("OCR result (fallback):", result)
         
         # Format results
         ocr_results = []
         if result:
+
             # Case 1: Newer dict-based schema: [{ 'rec_texts': [...], 'rec_scores': [...], 'rec_boxes': ... }]
             if isinstance(result[0], dict) and (
                 'rec_texts' in result[0] or 'rec_scores' in result[0] or 'rec_boxes' in result[0]
             ):
                 print("Parsing OCR result in dict schema (rec_texts/rec_scores/rec_boxes)")
                 first = result[0]
-                rec_texts = first.get('rec_texts', []) or []
-                rec_scores = first.get('rec_scores', []) or []
-                rec_boxes = first.get('rec_boxes', []) or []
-                count = max(len(rec_texts), len(rec_scores), len(rec_boxes) if hasattr(rec_boxes, '__len__') else 0)
-                for i in range(count):
-                    text = rec_texts[i] if i < len(rec_texts) else ""
-                    confidence = float(rec_scores[i]) if i < len(rec_scores) else 0.0
+                rec_texts = first.get('rec_texts', [])
+                if rec_texts is None:
+                    rec_texts = []
+                rec_scores = first.get('rec_scores', [])
+                if rec_scores is None:
+                    rec_scores = []
+                rec_boxes = first.get('rec_boxes', [])
+                if rec_boxes is None:
+                    rec_boxes = []
+                for i, text in enumerate(rec_texts):
+                    confidence = rec_scores[i] if i < len(rec_scores) else 0.0
                     bbox = rec_boxes[i] if i < len(rec_boxes) else []
+                    
                     ocr_results.append({
                         "text": text,
-                        "confidence": confidence,
-                        "bbox": bbox
+                        "confidence": float(confidence),
+                        "bbox": convert_numpy_to_list(bbox)
                     })
             # Case 2: Legacy list schema: [[bbox, [text, score]], ...]
             elif isinstance(result[0], list) or isinstance(result[0], tuple):
@@ -247,7 +254,7 @@ def process_image(image_bytes):
                         ocr_results.append({
                             "text": text,
                             "confidence": float(confidence),
-                            "bbox": bbox
+                            "bbox": convert_numpy_to_list(bbox)
                         })
                     except Exception:
                         # Fallback: try dict-like
@@ -255,7 +262,7 @@ def process_image(image_bytes):
                             text = line.get('text', '')
                             confidence = float(line.get('score', 0.0))
                             bbox = line.get('bbox', [])
-                            ocr_results.append({"text": text, "confidence": confidence, "bbox": bbox})
+                            ocr_results.append({"text": text, "confidence": confidence, "bbox": convert_numpy_to_list(bbox)})
             else:
                 print("Unexpected OCR result structure; returning raw text strings if available")
                 # Attempt to flatten any strings present
@@ -447,10 +454,11 @@ def analyze_with_openai():
         prompt = f"""
 You are a medical coding expert. Analyze the following medical text and extract all relevant ICD-10 codes with their full descriptions.
 
-For each condition, diagnosis, or medical finding mentioned, provide:
+For each condition, status, diagnosis, or medical finding mentioned, provide:
 1. The ICD-10 code
 2. The full official description
 3. A brief explanation of why this code applies
+4. The status of the diagnosis or condition (active/historical/need review)
 
 Format your response as a JSON object with this structure:
 {{
@@ -459,7 +467,8 @@ Format your response as a JSON object with this structure:
             "code": "ICD-10 code",
             "description": "Full official description",
             "explanation": "Why this code applies to the text",
-            "confidence": "high/medium/low"
+            "confidence": "high/medium/low",
+            "status": "active/historical/need review"
         }}
     ],
     "summary": "Brief summary of the medical conditions found",
@@ -477,13 +486,13 @@ Please be thorough and accurate. Only include codes that are clearly mentioned o
     api_key=OPENAI_API_KEY
 )
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4o",
             messages=[
                 {"role": "system", "content": "You are a medical coding expert specializing in ICD-10 code extraction."},
                 {"role": "user", "content": prompt}
             ],
             max_tokens=2000,
-            temperature=0.1
+            temperature=0.3
         )
         
         # Extract the response
@@ -516,8 +525,7 @@ Please be thorough and accurate. Only include codes that are clearly mentioned o
         return jsonify({
             "success": True,
             "analysis": parsed_response,
-            "text_length": len(text),
-            "model_used": "gpt-3.5-turbo"
+            "text_length": len(text)
         })
         
     except Exception as e:
